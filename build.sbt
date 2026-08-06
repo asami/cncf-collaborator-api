@@ -1,6 +1,6 @@
 ThisBuild / organization := "org.goldenport"
 name := "cncf-collaborator-api"
-ThisBuild / version := "0.1.0"
+ThisBuild / version := "0.2.0-SNAPSHOT"
 ThisBuild / scalaVersion := "3.3.7"
 
 ThisBuild / publishArtifact := true
@@ -26,12 +26,11 @@ crossPaths := false
 
 Compile / javacOptions ++= Seq(
   "--release",
-  "21"
+  "17"
 )
 
-libraryDependencies += "org.junit.jupiter" % "junit-jupiter" % "5.10.0" % Test
+libraryDependencies += "com.github.sbt.junit" % "jupiter-interface" % JupiterKeys.jupiterVersion.value % Test
 
 Test / fork := true
 Test / parallelExecution := false
-Test / testFrameworks += new TestFramework("org.junit.platform.surefire.provider.JUnitPlatform")
 Test / doc / sources := Seq.empty
