@@ -3,6 +3,7 @@ package org.goldenport.cncf.component.identity;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -386,6 +387,167 @@ class ComponentIdentityTest {
             assertTrue(emptylabel.getMessage().contains("component.identity.instance.label.required"));
             assertTrue(defaultnullcomponent.getMessage().contains(
                     "component.identity.instance.component-id.required"));
+        }
+    }
+
+    @Nested
+    @DisplayName("CAR release coordinates")
+    class CarReleaseCoordinates {
+        @Test
+        void releaseCoordinateProjectsCanonicalCarRepositoryAbi() {
+            // Given
+            ComponentId componentid = _require_component_id("org.simplemodeling.textus.UserAccount");
+            String release = "0.6.0-SNAPSHOT";
+            String sha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+            // When
+            ComponentIdentityResult<ComponentReleaseCoordinate> result =
+                    ComponentReleaseCoordinate.create(componentid, release);
+            ComponentReleaseCoordinate coordinate = ComponentReleaseCoordinate.require(componentid, release);
+
+            // Then
+            assertTrue(result.isSuccess());
+            assertEquals(coordinate, result.value().orElseThrow());
+            assertEquals(componentid, coordinate.componentId());
+            assertEquals(release, coordinate.release());
+            assertEquals("org.simplemodeling.textus.UserAccount", coordinate.qualifiedId());
+            assertEquals("org.simplemodeling.textus", coordinate.mavenGroupId());
+            assertEquals("textus-user-account", coordinate.mavenArtifactId());
+            assertEquals("org.simplemodeling.textus.UserAccount:0.6.0-SNAPSHOT",
+                    coordinate.dependencyKey());
+            assertEquals("org.simplemodeling.textus:textus-user-account:0.6.0-SNAPSHOT",
+                    coordinate.mavenReleaseKey());
+            assertEquals("org/simplemodeling/textus", coordinate.groupPath());
+            assertEquals("textus-user-account-0.6.0-SNAPSHOT.car", coordinate.carFilename());
+            assertEquals("org/simplemodeling/textus/textus-user-account/0.6.0-SNAPSHOT/"
+                    + "textus-user-account-0.6.0-SNAPSHOT.car", coordinate.carRepositoryRelativePath());
+            assertEquals(coordinate.carRepositoryRelativePath(), coordinate.carCacheRelativePath());
+            assertEquals("car/org/simplemodeling/textus/textus-user-account.yaml",
+                    coordinate.carCatalogRelativePath());
+            assertEquals("car:org.simplemodeling.textus:UserAccount", coordinate.carIndexKey());
+            assertEquals("org.simplemodeling.textus:textus-user-account:0.6.0-SNAPSHOT@sha256:"
+                    + sha256, coordinate.requireIntegrityKey(sha256));
+        }
+
+        @Test
+        void sameArtifactFilenameInSeparateNamespacesRetainsDistinctRepositoryCoordinates() {
+            // Given
+            String release = "0.6.0-SNAPSHOT";
+            String sha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+            // When
+            ComponentReleaseCoordinate first = ComponentReleaseCoordinate.require(
+                    _require_component_id("org.alpha.textus.Shared"), release);
+            ComponentReleaseCoordinate second = ComponentReleaseCoordinate.require(
+                    _require_component_id("org.beta.textus.Shared"), release);
+
+            // Then
+            assertEquals(first.mavenArtifactId(), second.mavenArtifactId());
+            assertEquals(first.carFilename(), second.carFilename());
+            assertNotEquals(first.qualifiedId(), second.qualifiedId());
+            assertNotEquals(first.dependencyKey(), second.dependencyKey());
+            assertNotEquals(first.mavenReleaseKey(), second.mavenReleaseKey());
+            assertNotEquals(first.groupPath(), second.groupPath());
+            assertNotEquals(first.carRepositoryRelativePath(), second.carRepositoryRelativePath());
+            assertNotEquals(first.carCacheRelativePath(), second.carCacheRelativePath());
+            assertNotEquals(first.carCatalogRelativePath(), second.carCatalogRelativePath());
+            assertNotEquals(first.carIndexKey(), second.carIndexKey());
+            assertEquals("org.alpha.textus:textus-shared:0.6.0-SNAPSHOT@sha256:" + sha256,
+                    first.requireIntegrityKey(sha256));
+            assertEquals("org.beta.textus:textus-shared:0.6.0-SNAPSHOT@sha256:" + sha256,
+                    second.requireIntegrityKey(sha256));
+            assertNotEquals(first.requireIntegrityKey(sha256), second.requireIntegrityKey(sha256));
+        }
+
+        @Test
+        void releaseCoordinateReturnsTypedFailuresAndRequireThrowsForInvalidInputs() {
+            // Given
+            ComponentId componentid = _require_component_id("org.simplemodeling.textus.UserAccount");
+
+            // When
+            ComponentIdentityResult<ComponentReleaseCoordinate> nullcomponent =
+                    ComponentReleaseCoordinate.create(null, "0.6.0-SNAPSHOT");
+            ComponentIdentityResult<ComponentReleaseCoordinate> nullrelease =
+                    ComponentReleaseCoordinate.create(componentid, null);
+            ComponentIdentityResult<ComponentReleaseCoordinate> blankrelease =
+                    ComponentReleaseCoordinate.create(componentid, " ");
+            ComponentIdentityResult<ComponentReleaseCoordinate> invalidrelease =
+                    ComponentReleaseCoordinate.create(componentid, "0.6.0/SNAPSHOT");
+            IllegalStateException nullfailure = assertThrows(IllegalStateException.class,
+                    () -> ComponentReleaseCoordinate.require(null, "0.6.0-SNAPSHOT"));
+            IllegalStateException blankfailure = assertThrows(IllegalStateException.class,
+                    () -> ComponentReleaseCoordinate.require(componentid, ""));
+            IllegalStateException formatfailure = assertThrows(IllegalStateException.class,
+                    () -> ComponentReleaseCoordinate.require(componentid, "0.6.0/SNAPSHOT"));
+
+            // Then
+            _assert_error(nullcomponent, "component.identity.component.required");
+            _assert_error(nullrelease, "component.identity.release.required");
+            _assert_error(blankrelease, "component.identity.release.required");
+            _assert_error(invalidrelease, "component.identity.release.format");
+            assertTrue(nullfailure.getMessage().contains("component.identity.component.required"));
+            assertTrue(blankfailure.getMessage().contains("component.identity.release.required"));
+            assertTrue(formatfailure.getMessage().contains("component.identity.release.format"));
+        }
+
+        @Test
+        void integrityKeyRequiresBareLowercaseSha256AndCoordinateValueSemanticsAreDeterministic() {
+            // Given
+            ComponentId componentid = _require_component_id("org.simplemodeling.textus.UserAccount");
+            ComponentId separatelyparsed = _require_component_id("org.simplemodeling.textus.UserAccount");
+            ComponentReleaseCoordinate coordinate = ComponentReleaseCoordinate.require(componentid,
+                    "0.6.0-SNAPSHOT");
+            ComponentReleaseCoordinate equal = ComponentReleaseCoordinate.require(separatelyparsed,
+                    "0.6.0-SNAPSHOT");
+            ComponentReleaseCoordinate later = ComponentReleaseCoordinate.require(componentid,
+                    "0.6.1-SNAPSHOT");
+            ComponentReleaseCoordinate differentcomponent = ComponentReleaseCoordinate.require(
+                    _require_component_id("org.simplemodeling.textus.UserProfile"), "0.6.0-SNAPSHOT");
+            String validdigest = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+            List<String> paths = List.of(coordinate.groupPath(), coordinate.carFilename(),
+                    coordinate.carRepositoryRelativePath(), coordinate.carCacheRelativePath(),
+                    coordinate.carCatalogRelativePath());
+
+            // When
+            ComponentIdentityResult<String> nullsha = coordinate.integrityKey(null);
+            ComponentIdentityResult<String> emptysha = coordinate.integrityKey("");
+            ComponentIdentityResult<String> whitespacesha = coordinate.integrityKey(" \t\n");
+            ComponentIdentityResult<String> prefixedsha = coordinate.integrityKey("sha256:" + validdigest);
+            ComponentIdentityResult<String> surroundedsha = coordinate.integrityKey(" " + validdigest + " ");
+            ComponentIdentityResult<String> uppercasesha = coordinate.integrityKey(validdigest.toUpperCase(
+                    java.util.Locale.ROOT));
+            ComponentIdentityResult<String> shortsha = coordinate.integrityKey(validdigest.substring(0, 63));
+            ComponentIdentityResult<String> longsha = coordinate.integrityKey(validdigest + "0");
+            ComponentIdentityResult<String> nonhexsha = coordinate.integrityKey("g" + validdigest.substring(1));
+            IllegalStateException emptyfailure = assertThrows(IllegalStateException.class,
+                    () -> coordinate.requireIntegrityKey(""));
+            IllegalStateException sha256failure = assertThrows(IllegalStateException.class,
+                    () -> coordinate.requireIntegrityKey("sha256:" + validdigest));
+
+            // Then
+            _assert_error(nullsha, "component.identity.sha256.required");
+            _assert_error(emptysha, "component.identity.sha256.required");
+            _assert_error(whitespacesha, "component.identity.sha256.required");
+            _assert_error(prefixedsha, "component.identity.sha256.format");
+            _assert_error(surroundedsha, "component.identity.sha256.format");
+            _assert_error(uppercasesha, "component.identity.sha256.format");
+            _assert_error(shortsha, "component.identity.sha256.format");
+            _assert_error(longsha, "component.identity.sha256.format");
+            _assert_error(nonhexsha, "component.identity.sha256.format");
+            assertTrue(emptyfailure.getMessage().contains("component.identity.sha256.required"));
+            assertTrue(sha256failure.getMessage().contains("component.identity.sha256.format"));
+            for (String path : paths) {
+                assertFalse(path.contains(".."));
+                assertFalse(path.startsWith("/"));
+                assertFalse(path.contains("\\"));
+            }
+            assertEquals(componentid, separatelyparsed);
+            assertNotSame(componentid, separatelyparsed);
+            assertEquals(coordinate, equal);
+            assertEquals(coordinate.hashCode(), equal.hashCode());
+            assertNotEquals(coordinate, later);
+            assertNotEquals(coordinate, differentcomponent);
+            assertEquals(coordinate.mavenReleaseKey(), coordinate.toString());
         }
     }
 
