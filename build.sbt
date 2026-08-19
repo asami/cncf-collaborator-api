@@ -1,7 +1,7 @@
 ThisBuild / organization := "org.goldenport"
 name := "cncf-collaborator-api"
-ThisBuild / version := "0.2.0-SNAPSHOT"
-ThisBuild / scalaVersion := "3.3.7"
+ThisBuild / version := "0.2.0"
+ThisBuild / scalaVersion := "3.3.8"
 
 ThisBuild / publishArtifact := true
 
